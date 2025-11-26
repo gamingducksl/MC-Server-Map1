@@ -1,0 +1,210 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>2011 Again Map</title>
+<link rel="icon" type="image/x-icon" href="favicon.ico">
+
+<!-- This was coded using AI because I am incompetent at Web development. Listen, I do Python, not HTML5, CSS, or JS. -->
+
+<style>
+html, body {
+    margin: 0;
+    padding: 0;
+    height: 100%;
+    overflow: hidden;
+    background: #000;
+}
+
+#viewer {
+    position: fixed;
+    inset: 0;
+    background: #000;
+    touch-action: none;
+    cursor: grab;
+}
+
+#viewer:active {
+    cursor: grabbing;
+}
+
+#imgWrap {
+    position: absolute;
+    top: 0;
+    left: 0;
+    transform-origin: top left;
+    will-change: transform;
+}
+
+/* Prevent native dragging + ensure crisp pixel zoom */
+#imgWrap img {
+    display: block;
+    max-width: none;
+    max-height: none;
+    user-select: none;
+    pointer-events: none;
+    -webkit-user-drag: none;
+    image-rendering: pixelated;
+    image-rendering: crisp-edges;
+}
+</style>
+</head>
+
+<body>
+
+<div id="viewer">
+    <div id="imgWrap">
+        <img id="mapImg" src="map.png" alt="">
+    </div>
+</div>
+
+<script>
+const viewer = document.getElementById("viewer");
+const imgWrap = document.getElementById("imgWrap");
+const img = document.getElementById("mapImg");
+
+let scale = 1;
+let MIN_SCALE = 0.1; // computed on load
+const MAX_SCALE = 20;
+
+let originX = 0;
+let originY = 0;
+
+let dragging = false;
+let lastX = 0;
+let lastY = 0;
+
+// Center the image for a given scale
+function computeCenterOriginForScale(s) {
+    const vw = viewer.clientWidth;
+    const vh = viewer.clientHeight;
+    const iw = img.naturalWidth * s;
+    const ih = img.naturalHeight * s;
+
+    return {
+        x: (vw - iw) / 2,
+        y: (vh - ih) / 2
+    };
+}
+
+// Prevent panning outside the image
+function clampPan() {
+    const vw = viewer.clientWidth;
+    const vh = viewer.clientHeight;
+
+    const iw = img.naturalWidth * scale;
+    const ih = img.naturalHeight * scale;
+
+    // Horizontal clamp
+    if (iw <= vw) {
+        // Image narrower than viewport → must be centered
+        originX = (vw - iw) / 2;
+    } else {
+        // Clamp so no black bars appear
+        originX = Math.min(0, Math.max(originX, vw - iw));
+    }
+
+    // Vertical clamp
+    if (ih <= vh) {
+        // Image shorter than viewport → must be centered
+        originY = (vh - ih) / 2;
+    } else {
+        originY = Math.min(0, Math.max(originY, vh - ih));
+    }
+}
+
+function updateTransform() {
+    imgWrap.style.transform = `translate(${originX}px, ${originY}px) scale(${scale})`;
+}
+
+function enforceMinZoom() {
+    scale = MIN_SCALE;
+    const c = computeCenterOriginForScale(MIN_SCALE);
+    originX = c.x;
+    originY = c.y;
+    updateTransform();
+}
+
+// -------------------------------
+// IMAGE LOAD → calculate MIN_SCALE
+// -------------------------------
+img.addEventListener("load", () => {
+    const vw = viewer.clientWidth;
+    const vh = viewer.clientHeight;
+
+    const iw = img.naturalWidth;
+    const ih = img.naturalHeight;
+
+    MIN_SCALE = Math.min(vw / iw, vh / ih);
+
+    enforceMinZoom();
+});
+
+// -------------------------------
+// MOUSE WHEEL ZOOM
+// -------------------------------
+viewer.addEventListener("wheel", e => {
+    e.preventDefault();
+
+    const rect = viewer.getBoundingClientRect();
+    const mx = e.clientX - rect.left;
+    const my = e.clientY - rect.top;
+
+    const zoomFactor = Math.exp(-e.deltaY * 0.002);
+    let newScale = scale * zoomFactor;
+
+    if (newScale <= MIN_SCALE) {
+        enforceMinZoom();
+        return;
+    }
+
+    newScale = Math.min(newScale, MAX_SCALE);
+    const factor = newScale / scale;
+
+    // Zoom around mouse
+    originX = mx - (mx - originX) * factor;
+    originY = my - (my - originY) * factor;
+
+    scale = newScale;
+    clampPan();
+    updateTransform();
+}, { passive: false });
+
+// -------------------------------
+// DRAGGING / PANNING
+// -------------------------------
+viewer.addEventListener("pointerdown", e => {
+    dragging = true;
+    lastX = e.clientX;
+    lastY = e.clientY;
+    viewer.setPointerCapture(e.pointerId);
+});
+
+viewer.addEventListener("pointermove", e => {
+    if (!dragging) return;
+
+    originX += e.clientX - lastX;
+    originY += e.clientY - lastY;
+
+    lastX = e.clientX;
+    lastY = e.clientY;
+
+    clampPan();
+    updateTransform();
+});
+
+viewer.addEventListener("pointerup", () => {
+    dragging = false;
+});
+
+// -------------------------------
+// DOUBLE CLICK → RESET VIEW
+// -------------------------------
+viewer.addEventListener("dblclick", () => {
+    enforceMinZoom();
+});
+</script>
+
+</body>
+</html>
